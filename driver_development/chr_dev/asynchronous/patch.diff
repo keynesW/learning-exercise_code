@@ -1,0 +1,108 @@
+--- ./test_key_app.c	2021-01-13 18:19:35.893958712 +0800
++++ ./test_key_appbk.c	2021-01-13 14:14:13.594620154 +0800
+@@ -1,55 +1,66 @@
+-#include <stdlib.h>
++/*******************************************************************
++ *
++ *     File Name    :      test_key_interrupt.c
++ *     Author       :      Keynes 
++ *     QQ           :      1446160257  
++ *     Email        :      1446160257@qq.com 
++ *     Blog： :      http://www.    .com/ 
++ *     Created Time :      Mon 11 Jan 2021 10:32:37 AM CST
++ *     Description  :      Hello Word in C++ , GUN-style
++ *
++ ******************************************************************/
++
+ #include <stdio.h>
++#include <stdlib.h>
++//#include <unistd.h>
++//#include <sys/types.h>
++//#include <string.h>
+ #include <fcntl.h>
++#include <errno.h>
+ #include <poll.h>
+ #include <signal.h>
+ 
+-#define KEY2 2
+-#define KEY3 3
+-
+-struct key_event{
+-	int code ;
+-	int value;
+-};
++struct ev{
++   int code;
++   int value;
++}event;
+ 
+ int fd;
+-struct key_event event;
+ 
+-void catch_signale(int signal){
+-	if(signal == SIGIO){
+-		read(fd, &event, sizeof(event));
+-		if(event.code == KEY3){
+-            printf(" code: %d event : %d\n",event.code,event.value);
+-			if(event.value == 1){
+-				printf("key3 down\n");
+-			}else{
+-				printf("key3 up\n");
+-			}
+-		}
+-	}
++void catch_signal(int a)
++{
++    if(a == SIGIO)
++        read(fd,&event,sizeof(event));
++    printf("  %d  ,%d\n",event.code,event.value);
++    if(event.code == 10)
++        if(event.value == 1)
++            printf("fad\n");
++        else
++            printf("else\n");
+ }
+ 
++//struct key_event event;
+ 
+-int main(int argc, const char *argv[])
++int main( int argc,const char * argv[] )
+ {
+-	fd = open("/dev/key3", O_RDWR | O_NONBLOCK);
+-	if(fd < 0){
+-		perror("open");
+-		exit(1);
+-	}
+-	// 1,设置信号处理方法
+-	signal(SIGIO,catch_signale);
+-	// 2，将当前进程设置成SIGIO的属主进程
+-	fcntl(fd, F_SETOWN, getpid());
+-	// 3，将io模式设置成异步模式
+-	int flags  = fcntl(fd, F_GETFL);
+-	fcntl(fd, F_SETFL, flags | FASYNC );
+-	for(;;){
+-		printf("i'm working\n");
+-		sleep(1);
+-	}
++    //struct pollfd pfd[2];
+ 
++    printf("  %d  ,%d\n",event.code,event.value);
+ 
++    if(open("/dev/key3",O_RDWR|O_NONBLOCK) < 0 )
++        exit(EXIT_FAILURE);
+ 
+-	return 0;
++    signal(SIGIO,catch_signal);
++    fcntl(fd,F_SETOWN,getpid());    
++
++    int flags = fcntl(fd,F_GETFL);
++    fcntl(fd,F_SETFL,flags | FASYNC);
++
++    while(1)
++    {
++        printf("fadsfadfd\n");
++        sleep(1);
++    }
++    close(fd);
++    return 0;
+ }

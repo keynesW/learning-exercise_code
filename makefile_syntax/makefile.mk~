@@ -1,0 +1,8 @@
+tst:test.o test-Copy.o 
+	cc -o tst test.o test-Copy.o
+test.o:test.c test-Copy.h
+	cc -o test.o
+test-Copy:test-Copy.c test-Copy.h
+	cc -o test-Copy.o
+clean:
+	rm tst test.o test-Copy.o 

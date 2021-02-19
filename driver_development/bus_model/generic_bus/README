@@ -1,0 +1,281 @@
+
+总线驱动设备模型：
+
+1、总线驱动设备模型只是提供一种机制，将驱动程序分为device和driver两部分并彼此建立联系
+
+2、注册device过程：
+
+ a、将device放入bus的dev链表
+
+ b、从bus的drv链表取出每一个driver，用bus的match函数判断取出的driver能否支持这个device（判断name）
+
+ c、如果支持，调用该driver的probe函数（probe函数自由实现）
+
+3、注册driver过程：
+
+ a、将driver放入bus的drv链表
+
+ b、从bus的dev链表取出每一个device，用bus的match函数判断这个driver能否匹配取出的device（判断name）
+
+ c、如果匹配，调用该driver的probe函数（probe函数自由实现）
+
+
+设备驱动模型：bus, driver, device
+struct bus_type :总线对象，描述一个总线，管理device和driver，完成匹配
+struct bus_type {
+	const char		*name;
+	int (*match)(struct device *dev, struct device_driver *drv);
+}
+注册和注销
+	int bus_register(struct bus_type *bus)
+	void bus_unregister(struct bus_type *bus)
+
+
+device对象：设备对象，描述设备信息，包括地址，中断号，甚至其他自定义的数据
+device.h
+struct device {
+	struct kobject kobj;　　//所有对象的父类
+	const char		*init_name; 
+	// 在总线中会有一个名字，用于做匹配，在/sys/bus/mybus/devices/名字
+	struct bus_type	*bus; //指向该device对象依附于总线的对象
+	void		*platform_data; // 自定义的数据,指向任何类型数据
+｝
+注册和注销的方法：
+	int device_register(struct device *dev)
+	void device_unregister(struct device *dev)
+
+
+driver对象：描述设备驱动的方法(代码逻辑)
+struct device_driver {
+	const char		*name;
+	// 在总线中会有一个名字，用于做匹配，在/sys/bus/mybus/drivers/名字
+	struct bus_type		*bus;//指向该driver对象依附于总线的对象
+	int (*probe) (struct device *dev); // 如果device和driver匹配之后，driver要做的事情
+	int (*remove) (struct device *dev); // 如果device和driver从总线移除之后，driver要做的事情
+}
+注册和注销：
+	int driver_register(struct device_driver *drv)
+	void driver_unregister(struct device_driver *drv)
+
+
+
+如何实现总线匹配，匹配成功之后会自动调用driver的probe方法：
+	1， 实现bus对象中 match方法
+	2， 保证driver和device中名字要一样
+通过  ls /sys/bus 查看驱动安装情况
+====================================================================
+平台总线模型：
+	为什么会有平台总线：
+		用于平台升级：三星：　2410, 2440, 6410, s5pc100  s5pv210  4412
+			硬件平台升级的时候，部分的模块的控制方式，基本上是类似的
+			但是模块的地址是不一样
+
+			gpio控制逻辑： 1， 配置gpio的输入输出功能： gpxxconf
+						   2， 给gpio的数据寄存器设置高低电平： gpxxdata
+						逻辑操作基本上是一样的
+						但是地址不一样
+			
+			uart控制：1,设置8n1,115200, no AFC
+						UCON,ULCON, UMODOEN, UDIV
+					
+					逻辑基本上是一样的
+					但是地址不一样
+	platform总线
+　　实现设备和驱动的分离，为了提高驱动的通用性。
+　　实现分离后出现三种文件:  驱动代码(自己实现)
+　　　　　　　　　　　　　　设备代码(自己实现)
+　　　　　　　　　　　　　　虚拟总线代码(内核实现)
+	
+	问题：
+		当soc升级的时候， 对于相似的设备驱动，需要编写很多次(如果不用平台总线)
+		但是会有大部分重复代码
+
+	解决：引入平台总线	
+			device(中断/地址)和driver(操作逻辑) 分离
+		在升级的时候，只需要修改device中信息即可(中断/地址)
+		实现一个driver代码能够驱动多个平台相似的模块，并且修改的代码量很少
+		
+
+平台总线中的三元素：
+1， bus
+	platform_bus:不需要自己创建，开机的时候自动创建
+
+	struct bus_type platform_bus_type = {
+		.name		= "platform",
+		.dev_groups	= platform_dev_groups,
+		.match		= platform_match,
+		.uevent		= platform_uevent,
+		.pm		= &platform_dev_pm_ops,
+	};
+	匹配方法：
+		1，优先匹配 pdriver 中的id_table,里面包含了支持不同的平台的名字
+		2，直接匹配driver中名字和device中名字
+
+		struct platform_device *pdev = to_platform_device(dev);
+		struct platform_driver *pdrv = to_platform_driver(drv);
+		if (pdrv->id_table)// 如果pdrv中有idtable，平台列表名字和pdev中的名字
+			return platform_match_id(pdrv->id_table, pdev) != NULL;
+
+		/* fall-back to driver name match */
+		return (strcmp(pdev->name, drv->name) == 0);
+		
+		pdrv->id_table的类型
+		struct platform_device_id {
+			char name[PLATFORM_NAME_SIZE];
+			kernel_ulong_t driver_data;
+		};
+2，device对象：
+	struct platform_device {
+		const char	*name;  //用于做匹配
+		int		id;  // 一般都是直接给-1
+		struct device	dev; // 继承了device父类
+		u32		num_resources; // 资源的个数
+		struct resource	*resource; // 资源：包括了一个设备的地址和中断
+	}
+	具体实现：
+	struct platform_device led_pdev = {
+	.name = "exynos4412_led", // 用于做匹配  /sys/bus/platform/devices/exynos4412_led
+	.id = -1,
+	.num_resources = ARRAY_SIZE(led_res),
+	.resource = led_res,
+    };
+	注册和注销
+		int  platform_device_register(struct platform_device * pdev)；
+		void  platform_device_unregister(struct platform_device * pdev)
+		
+	resource 初始化如下：
+	struct resource led_res[] = {
+	[0] = {
+		.start = GPX1_CON,
+		.end = GPX1_CON + GPXX_SIZE - 1, 
+		.flags = IORESOURCE_MEM,
+	},
+	[1] = {
+		.start = GPF3_CON,
+		.end = GPF3_CON + GPXX_SIZE - 1, 
+		.flags = IORESOURCE_MEM,
+	},
+	[2] = {
+		.start =  0,
+		.end = 0, 
+		.flags = IORESOURCE_IRQ,
+	},	
+	[3] = {
+		.start =  4,
+		.end = 4, 
+		.flags = IORESOURCE_IRQ,
+	},		
+
+};
+	num_resources 的定义如下：
+	
+
+3，driver对象
+	struct platform_driver {
+			int (*probe)(struct platform_device *); //匹配成功之后被调用的函数
+			int (*remove)(struct platform_device *);//device移除的时候调用的函数
+			struct device_driver driver; //继承了driver父类
+								|
+								const char		*name;
+			const struct platform_device_id *id_table; //如果driver支持多个平台，在列表中写出来
+	}
+	
+	实例：
+	
+	const struct platform_device_id led_id_table[] = {
+		{"exynos4412_led", 0x4444},
+		{"s5pv210_led", 0x2222},
+		{"s3c2410_led", 0x3333},
+		{"s3c6410_led", 0x3333},
+	};	
+	struct platform_driver led_pdrv = {
+		.probe = led_pdrv_probe,
+		.remove = led_pdrv_remove,
+		.driver = {
+				.name = "samsung_led_drv",
+					//可以用于做匹配
+					// /sys/bus/platform/drivers/samsung_led_drv
+		},
+		.id_table = led_id_table,//先匹配该属性，再匹配上面的driver中的name
+	};
+
+	probe方法的实现：
+	int led_drv_probe(struct platform_device *pdev)
+	{
+		printk("-----%s------------\n", __FUNCTION__);
+		int ret;
+
+		//获取资源
+		// 参数1: 从哪个pdev中获取资源
+		// 参数2:  资源类型
+		// 参数3: 表示获取同种资源的第几个
+		
+		res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+		printk("start = %d\n",res->start);
+		int irqno = platform_get_irq(pdev, 0);
+		// 等同于platform_get_resource(pdev, IORESOURCE_IRQ, 0);
+		printk("--------irqno = %d\n", irqno);
+
+		return 0;
+	}
+	注册和注销
+		int platform_driver_register(struct platform_driver *drv);
+		void platform_driver_unregister(struct platform_driver *drv)
+
+		查看
+		ls /sys/bus/
+		ls /sys/bus/mybus/
+		ls /sys/bus/mybus/devices
+		ls /sys/bus/mybus/drivers
+==========================================
+编写代码：　编写一个能在多个平台下使用的led驱动
+1，注册一个platform_device,定义资源：地址和中断
+			struct resource {
+				resource_size_t start; // 开始
+				resource_size_t end; //结束
+				const char *name; //描述，自定义
+				unsigned long flags; //区分当前资源描述的是中断(IORESOURCE_IRQ)还是内存（IORESOURCE_MEM）
+				struct resource *parent, *sibling, *child;
+			};
+
+2，注册一个platform_driver，实现操作设备的代码
+		注册完毕，同时如果和pdev匹配成功，自动调用probe方法：
+				probe方法： 对硬件进行操作
+						a，注册设备号，并且注册fops--为用户提供一个设备标示，同时提供文件操作io接口
+						b， 创建设备节点
+						c， 初始化硬件
+									ioremap(地址);  //地址从pdev需要获取
+									readl/writle();
+						d，实现各种io接口： xxx_open, xxx_read, ..
+			获取资源的方式：		
+			//获取资源
+			// 参数1: 从哪个pdev中获取资源
+			// 参数2:  资源类型
+			// 参数3: 表示获取同种资源的第几个
+				struct resource *platform_get_resource(struct platform_device *dev, unsigned int type, unsigned int num)
+				
+	参考：https://blog.csdn.net/adc0809608/article/details/7289285   //如何调用probe函数
+	
+	设备树节点转换为设备节点device_node、和平台设备资源platform_device
+	1、_dtb转换为device_node
+	在dts文件里，每个大括号{ }代表一个节点，比如根节点里有个大括号，对应一个device_node结构体；
+
+	memory也有一个大括号，也对应一个device_node结构体。
+
+	节点里面有各种属性，也可能里面还有子节点，所以它们还有一些父子关系。
+	2、_device_node转换为platform_device
+		a. 内核函数of_platform_default_populate_init, 遍历device_node树, 生成platform_device
+		b. 并非所有的device_node都会转换为platform_device只有以下的device_node会转换:
+
+			该节点必须含有compatible属性
+			根节点的子节点(节点必须含有compatible属性)
+			含有特殊compatible属性的节点的子节点(子节点必须含有compatible属性)这些特殊的compatilbe属性为: “simple-bus”,	“simple-  mfd”,“isa”,"arm,amba-bus "
+			根节点是例外的，生成platfrom_device时，即使有compatible属性也不会处理
+	    注意：i2c, spi等总线节点会转换为platform_device，但是，spi、i2c下的子节点无论compatilbe是否为: “simple-bus”,“simple-  mfd”,“isa”,"arm,amba-bus "都应该交给对应的总线驱动程序来处理而不会被转换为platform_device
+	
+	
+	
+	
+	
+	
+	

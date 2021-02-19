@@ -1,0 +1,25 @@
+diff -ruN new/sl.c sl-3.03.orig/sl.c
+--- new/sl.c	2020-10-09 15:45:01.458216445 +0800
++++ sl-3.03.orig/sl.c	2020-10-09 12:37:47.507235328 +0800
+@@ -8,6 +8,12 @@
+ /* sl version 3.03 : add usleep(20000)                                       */
+ /*                                              by Toyoda Masashi 1998/ 7/22 */
+ /* sl version 3.02 : D51 flies! Change options.                              */
++/*                                              by Toyoda Masashi 1993/ 1/19 */
++/* sl version 3.01 : Wheel turns smoother                                    */
++/*                                              by Toyoda Masashi 1992/12/25 */
++/* sl version 3.00 : Add d(D51) option                                       */
++/*                                              by Toyoda Masashi 1992/12/24 */
++/* sl version 2.02 : Bug fixed.(dust remains in screen)                      */
+ /*                                              by Toyoda Masashi 1992/12/17 */
+ /* sl version 2.01 : Smoke run and disappear.                                */
+ /*                   Change '-a' to accident option.			     */
+@@ -23,7 +29,7 @@
+ 
+ #include <curses.h>
+ #include <signal.h>
+-#iiandfasdnclude <unistd.h>
++#include <unistd.h>
+ #include "sl.h"
+ 
+ int ACCIDENT  = 0;

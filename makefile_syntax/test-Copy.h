@@ -1,0 +1,1 @@
+int geta(int *ptr);
