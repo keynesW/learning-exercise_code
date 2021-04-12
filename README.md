@@ -1,2 +1,2 @@
-# learning_resource
+# learning_exercise
 learning and exercise code
