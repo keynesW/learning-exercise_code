@@ -1,0 +1,188 @@
+#include <stdio.h>
+#include <unistd.h>
+#include <assert.h>
+#include <stdbool.h>
+#include <pthread.h>
+#include <semaphore.h>
+
+int buf = 0;
+int count = 0;
+int loops = 5;
+
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t producter_cond = PTHREAD_COND_INITIALIZER;
+pthread_cond_t consumer_cond = PTHREAD_COND_INITIALIZER;
+
+void put(int val)
+{
+    assert(count == 0);
+    count++;
+    buf = val;
+}
+
+int get(void)
+{
+    assert(count == 1);
+    count--;
+    return buf;
+}
+
+void *producter(void *args)
+{
+    int i = 0;
+
+    for (i = 0; i < loops; i++) {
+        pthread_mutex_lock(&mutex);
+        while (count == 1) { //why not if ?
+            pthread_cond_wait(&producter_cond, &mutex);
+        }
+        put(i);
+        printf("put val : %d\n", i);
+        pthread_cond_signal(&consumer_cond);
+        pthread_mutex_unlock(&mutex);
+    }
+}
+
+void *consumer(void *args)
+{
+    int i = 0;
+
+    for (i = 0; i < loops; i++) {
+        pthread_mutex_lock(&mutex);
+        while (count == 0) { //why not if ?
+            pthread_cond_wait(&consumer_cond, &mutex);
+        }
+        printf("pthread_self() : %ld, get val : %d\n", pthread_self(), get());
+        pthread_cond_signal(&producter_cond);
+        pthread_mutex_unlock(&mutex);
+    }
+}
+
+
+void producter_consumer(void)
+{
+    pthread_t producterId;
+    pthread_t consumerId;
+
+    pthread_create(&producterId, NULL, producter, NULL);
+    
+    for (int i = 0; i < loops; i++) {
+        pthread_create(&consumerId, NULL, consumer, NULL);
+    }
+
+    while (true) {
+        printf("parent thread\n");
+        sleep(2);
+    }
+}
+
+typedef struct rwlock{
+    sem_t read_lock; 
+    sem_t write_lock; 
+    int readers;
+} rwlock_t;
+
+void rwlock_init(rwlock_t *rwlock)
+{
+    sem_init(&rwlock->read_lock, 0, 1);
+    sem_init(&rwlock->write_lock, 0, 1);
+    rwlock->readers = 0;
+}
+
+void rwlock_acquire_readlock(rwlock_t *rwlock)
+{
+    sem_wait(&rwlock->read_lock);
+
+    rwlock->readers++;
+    if (rwlock->readers == 1) {
+        sem_wait(&rwlock->write_lock);
+    }
+
+    sem_post(&rwlock->read_lock);
+}
+
+void rwlock_release_readlock(rwlock_t *rwlock)
+{
+    sem_wait(&rwlock->read_lock);
+
+    rwlock->readers--;
+    if (rwlock->readers == 0) {
+        sem_post(&rwlock->write_lock);
+    }
+
+    sem_post(&rwlock->read_lock);
+}
+
+void rwlock_acquire_writelock(rwlock_t *rwlock)
+{
+    sem_wait(&rwlock->write_lock);
+}
+
+void rwlock_release_writelock(rwlock_t *rwlock)
+{
+    sem_post(&rwlock->write_lock);
+}
+
+static int g_rwVal = 0;
+
+rwlock_t rw_lock;
+pthread_t pthread_reader;
+pthread_t pthread_writer;
+
+int _read(void)
+{
+    return g_rwVal;
+}
+
+void _write(int val)
+{
+    g_rwVal = val;
+}
+
+void *reader(void *args)
+{
+    int i = 0;
+
+    for (i = 0; i < 10; i++) {
+        rwlock_acquire_readlock(&rw_lock);
+        printf("thread : %ld, read : %d\n", pthread_self(), _read());
+        rwlock_release_readlock(&rw_lock);
+    }
+}
+
+void *writer(void *args)
+{
+    int i = 0;
+
+    for (i = 0; i < 10; i++) {
+        rwlock_acquire_writelock(&rw_lock);
+        _write(i);
+        printf("thread : %ld, write : %d\n", pthread_self(), i);
+        rwlock_release_writelock(&rw_lock);
+    }
+}
+
+void read_write_lock(void)
+{
+    int ret = 0;
+    rwlock_init(&rw_lock);
+   
+    pthread_create(&pthread_reader, NULL, reader, NULL);
+    pthread_create(&pthread_writer, NULL, writer, NULL);
+    sleep(2);
+    pthread_create(&pthread_reader, NULL, reader, NULL);
+    
+    for (;;) {
+        printf("main thread ...\n");
+        sleep(5);
+    }
+}
+
+int main(int argc, char *argv[])
+{
+    //producter_consumer();
+
+    read_write_lock(); 
+
+    return 0;
+}
